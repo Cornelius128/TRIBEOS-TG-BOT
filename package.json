@@ -16,6 +16,7 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
+    "postinstall": "pnpm --filter @tribeos/database generate",
     "db:migrate": "pnpm --filter @tribeos/database migrate:dev",
     "db:generate": "pnpm --filter @tribeos/database generate",
     "db:studio": "pnpm --filter @tribeos/database studio"
