@@ -40,7 +40,13 @@ export function verifyTelegramWebAppData(
       .update(dataCheckString)
       .digest("hex");
 
-    if (expectedHash !== hash) return null;
+    // Constant-time comparison to prevent timing attacks
+    const expectedBuf = Buffer.from(expectedHash, "hex");
+    const actualBuf = Buffer.from(hash.padEnd(expectedHash.length, "0"), "hex");
+    if (
+      expectedBuf.length !== actualBuf.length ||
+      !crypto.timingSafeEqual(expectedBuf, actualBuf)
+    ) return null;
 
     // Reject data older than 1 hour
     const authDate = parseInt(params.get("auth_date") ?? "0", 10);

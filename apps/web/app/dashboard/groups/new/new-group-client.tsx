@@ -21,7 +21,7 @@ export function NewGroupClient() {
   const [error, setError] = useState("");
   const [statusMsg, setStatusMsg] = useState("");
 
-  const botUsername = "TribeOSBot"; // fallback
+  const botUsername = process.env.NEXT_PUBLIC_BOT_USERNAME ?? "TribeOSBot";
 
   async function generateChallenge() {
     setLoading(true);
