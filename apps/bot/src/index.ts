@@ -1,4 +1,5 @@
 import "dotenv/config";
+import crypto from "crypto";
 import { captureError, flushErrors } from "./monitoring.js";
 import { Bot, webhookCallback, type Context } from "grammy";
 import { limit } from "@grammyjs/ratelimiter";
@@ -19,12 +20,14 @@ if (!BOT_TOKEN) {
 const WEBHOOK_URL =
   process.env.WEBHOOK_URL ??
   (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : undefined);
-const WEBHOOK_SECRET = process.env.BOT_WEBHOOK_SECRET;
+const WEBHOOK_SECRET =
+  process.env.BOT_WEBHOOK_SECRET || crypto.randomBytes(32).toString("hex");
 const PORT = parseInt(process.env.PORT ?? process.env.BOT_PORT ?? "3001");
 
-if (WEBHOOK_URL && !WEBHOOK_SECRET) {
-  console.error("BOT_WEBHOOK_SECRET is required in webhook mode, otherwise anyone can post fake updates.");
-  process.exit(1);
+if (WEBHOOK_URL && !process.env.BOT_WEBHOOK_SECRET) {
+  console.warn(
+    "⚠️ BOT_WEBHOOK_SECRET is not set; auto-generated a secure session secret. Set BOT_WEBHOOK_SECRET in Railway variables to keep it persistent across restarts."
+  );
 }
 
 export const bot = new Bot(BOT_TOKEN);

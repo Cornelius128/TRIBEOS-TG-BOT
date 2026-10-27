@@ -9,6 +9,8 @@ export const BOT_COMMANDS = [
   { command: "stats", description: "View your personal stats" },
   { command: "portal", description: "Post community action board (group admins)" },
   { command: "flashbounty", description: "Start a Flash Bounty (group admins)" },
+  { command: "claim", description: "Claim Mystery Box reward" },
+  { command: "poach", description: "Poach an inactive referral" },
 ];
 
 export const REFERRAL_CODE_PREFIX = "ref_";
