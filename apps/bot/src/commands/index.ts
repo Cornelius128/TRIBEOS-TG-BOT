@@ -2,7 +2,6 @@ import type { Bot } from "grammy";
 import { handleStart } from "./start.js";
 import { handleHelp } from "./help.js";
 import { handleReferral } from "./referral.js";
-import { handleMyReferrals } from "./myreferrals.js";
 import { handleLeaderboard } from "./leaderboard.js";
 import { handleCampaign } from "./campaign.js";
 import { handleRules } from "./rules.js";
@@ -19,7 +18,7 @@ export function registerCommands(bot: Bot) {
   bot.command("menu", handleStart);
   bot.command("help", handleHelp);
   bot.command("referral", handleReferral);
-  bot.command("myreferrals", handleMyReferrals);
+  bot.command("myreferrals", handleStats);
   bot.command("leaderboard", handleLeaderboard);
   bot.command("campaign", handleCampaign);
   bot.command("stats", handleStats);

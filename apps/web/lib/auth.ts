@@ -7,6 +7,8 @@ import { verifyTelegramWebAppData } from "./telegram-auth";
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
+  // Railway terminates TLS at its edge and forwards the original Host header.
+  trustHost: true,
   pages: {
     signIn: "/auth/telegram",
     error: "/auth/telegram",

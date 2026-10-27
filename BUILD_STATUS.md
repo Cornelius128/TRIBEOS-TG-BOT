@@ -30,6 +30,10 @@
 | `/dashboard/groups/[groupId]/campaigns/new` | PPR — create campaign |
 | `/dashboard/groups/[groupId]/campaigns/[campaignId]` | PPR — campaign detail + leaderboard |
 | `/dashboard/groups/[groupId]/audit` | PPR — audit log |
+| `/dashboard/groups/[groupId]/rewards` | PPR — reward pools + claim status |
+| `/dashboard/groups/[groupId]/announcements` | PPR — schedule & broadcast messages |
+| `/dashboard/groups/[groupId]/teams` | PPR — team leaderboard + management |
+| `/dashboard/groups/[groupId]/quests` | PPR — quest + badge management |
 | `/dashboard/settings` | PPR — account settings |
 
 ### API Routes
@@ -44,7 +48,15 @@
 | `/api/groups/[groupId]/modules` | GET/PATCH | Module toggle |
 | `/api/groups/[groupId]/campaigns` | GET/POST | Campaign CRUD |
 | `/api/groups/[groupId]/campaigns/[campaignId]/status` | PATCH | Status transition |
-| `/api/telegram/webhook` | POST | Telegram update forwarder |
+| `/api/health` | GET | Liveness + database check (Railway health check) |
+| `/api/groups/[groupId]/rewards` | GET/POST | Reward pool CRUD |
+| `/api/groups/[groupId]/rewards/[allocationId]` | PATCH | Allocation status (ELIGIBLE→CLAIMED→PAID) |
+| `/api/groups/[groupId]/announcements` | GET/POST | Announcement CRUD + scheduling |
+| `/api/groups/[groupId]/announcements/[id]` | PATCH/DELETE | Update / cancel announcement |
+| `/api/groups/[groupId]/teams` | GET/POST | Team management |
+| `/api/groups/[groupId]/teams/[teamId]` | DELETE | Delete team |
+| `/api/groups/[groupId]/quests` | GET/POST | Quest CRUD |
+| `/api/groups/[groupId]/quests/[questId]` | PATCH/DELETE | Toggle / delete quest |
 
 ---
 
@@ -128,8 +140,8 @@
 ## Not Yet Implemented
 
 - Background job worker (`apps/worker`) — JobOutbox table ready, processor not built
-- Rewards/claims UI (`/dashboard/groups/[groupId]/rewards`)
 - Anti-fraud review queue UI
 - Wallet verification module (E)
-- Team battles module (F)
 - Reputation module (K)
+- Badge award UI (currently via bot/admin only)
+- Manual quest completion (admin UI to mark a participant complete)

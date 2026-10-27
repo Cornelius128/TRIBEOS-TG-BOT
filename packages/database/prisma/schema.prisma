@@ -93,6 +93,8 @@ model TelegramGroup {
   flashBounties   FlashBounty[]
   mysteryBoxes    MysteryBox[]
   poachEvents     PoachEvent[]
+  quests          Quest[]
+  badges          Badge[]
 
   @@map("telegram_groups")
 }
@@ -196,6 +198,9 @@ model Campaign {
   flashBounties FlashBounty[]
   mysteryBoxes  MysteryBox[]
   poachEvents   PoachEvent[]
+  teams         Team[]
+  quests        Quest[]
+  announcements Announcement[]
 
   @@map("campaigns")
 }
@@ -233,6 +238,9 @@ model CampaignParticipant {
   referralCode ReferralCode?
   referralsGiven    Referral[] @relation("Referrer")
   referralsReceived Referral[] @relation("Referred")
+  questCompletions  QuestCompletion[]
+  userBadges        UserBadge[]
+  teamMemberships   TeamMembership[]
 
   @@unique([campaignId, telegramUserId])
   @@map("campaign_participants")
@@ -447,9 +455,11 @@ model Team {
   campaignId  String
   name        String
   description String?
+  region      String?
   totalPoints Int      @default(0)
   createdAt   DateTime @default(now())
 
+  campaign    Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   memberships TeamMembership[]
 
   @@map("teams")
@@ -461,7 +471,8 @@ model TeamMembership {
   participantId String
   joinedAt      DateTime @default(now())
 
-  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team        Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  participant CampaignParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, participantId])
   @@map("team_memberships")
@@ -517,16 +528,86 @@ enum RewardStatus {
 model Announcement {
   id          String    @id @default(cuid())
   groupId     String
+  campaignId  String?
   content     String    @db.Text
+  type        String    @default("BROADCAST")
   scheduledAt DateTime?
   sentAt      DateTime?
   status      String    @default("DRAFT")
   createdBy   String?
   createdAt   DateTime  @default(now())
 
-  group TelegramGroup @relation(fields: [groupId], references: [id])
+  group    TelegramGroup @relation(fields: [groupId], references: [id])
+  campaign Campaign?     @relation(fields: [campaignId], references: [id])
 
   @@map("announcements")
+}
+
+// ─── Quests & Badges ──────────────────────────────────────────────────────────
+
+model Quest {
+  id          String   @id @default(cuid())
+  groupId     String
+  campaignId  String?
+  title       String
+  description String?  @db.Text
+  type        String   @default("MANUAL")
+  target      Int      @default(1)
+  points      Int      @default(10)
+  badgeId     String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  group       TelegramGroup    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  campaign    Campaign?        @relation(fields: [campaignId], references: [id])
+  badge       Badge?           @relation(fields: [badgeId], references: [id])
+  completions QuestCompletion[]
+
+  @@map("quests")
+}
+
+model QuestCompletion {
+  id            String   @id @default(cuid())
+  questId       String
+  participantId String
+  completedAt   DateTime @default(now())
+  pointsAwarded Int      @default(0)
+
+  quest       Quest               @relation(fields: [questId], references: [id], onDelete: Cascade)
+  participant CampaignParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([questId, participantId])
+  @@map("quest_completions")
+}
+
+model Badge {
+  id          String   @id @default(cuid())
+  groupId     String
+  name        String
+  description String?
+  emoji       String   @default("🏆")
+  rarity      String   @default("COMMON")
+  createdAt   DateTime @default(now())
+
+  group  TelegramGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  quests Quest[]
+  awards UserBadge[]
+
+  @@map("badges")
+}
+
+model UserBadge {
+  id            String   @id @default(cuid())
+  badgeId       String
+  participantId String
+  awardedAt     DateTime @default(now())
+  note          String?
+
+  badge       Badge               @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  participant CampaignParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([badgeId, participantId])
+  @@map("user_badges")
 }
 
 // ─── Audit Log ────────────────────────────────────────────────────────────────

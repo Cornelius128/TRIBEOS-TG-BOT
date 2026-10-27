@@ -56,11 +56,7 @@ export async function startFlashBounty(
     data: { telegramMessageId: msg.message_id.toString() },
   });
 
-  // Schedule end (using setTimeout for simplicity — in production use the worker/job system)
-  setTimeout(async () => {
-    await endFlashBounty(bot, bounty.id, groupTelegramId);
-  }, durationMinutes * 60 * 1000);
-
+  // Ending is handled by the expiry sweeper, so it survives bot restarts and redeploys.
   return `Flash Bounty started for ${durationMinutes} minutes with ${multiplier}x multiplier!`;
 }
 
@@ -69,33 +65,35 @@ export async function endFlashBounty(
   bountyId: string,
   groupTelegramId: string
 ): Promise<void> {
-  const bounty = await prisma.flashBounty.findUnique({ where: { id: bountyId } });
-  if (!bounty || bounty.status !== "ACTIVE") return;
-
-  await prisma.flashBounty.update({
-    where: { id: bountyId },
+  // Atomic claim: only one caller (sweeper tick or replica) gets to announce the end.
+  const { count } = await prisma.flashBounty.updateMany({
+    where: { id: bountyId, status: "ACTIVE" },
     data: { status: "ENDED" },
   });
+  if (count === 0) return;
+
+  const bounty = await prisma.flashBounty.findUnique({ where: { id: bountyId } });
 
   await bot.api.sendMessage(
     Number(groupTelegramId),
     `⏰ *Flash Bounty Ended!*\n\n` +
-      `Total new referrals during event: *${bounty.inviteCount}*\n\n` +
+      `Total new referrals during event: *${bounty?.inviteCount ?? 0}*\n\n` +
       `Standard rates are back. Keep inviting! /referral`,
     { parse_mode: "Markdown" }
   );
 }
 
-export async function getActiveFlashBountyMultiplier(groupId: string): Promise<number> {
-  const bounty = await prisma.flashBounty.findFirst({
+export async function getActiveFlashBounty(groupId: string, campaignId: string) {
+  const now = new Date();
+  return prisma.flashBounty.findFirst({
     where: {
       groupId,
       status: "ACTIVE",
-      startAt: { lte: new Date() },
-      endAt: { gt: new Date() },
+      startAt: { lte: now },
+      endAt: { gt: now },
+      OR: [{ campaignId: null }, { campaignId }],
     },
   });
-  return bounty?.multiplier ?? 1.0;
 }
 
 export async function incrementFlashBountyCount(groupId: string): Promise<void> {

@@ -13,6 +13,8 @@ import {
 import { getOrCreatePerUserInviteLink } from "../services/invite-links.js";
 import { getActiveCampaignForGroup, getOrCreateParticipant, getOrCreateReferralCode } from "../services/referral.js";
 import { startFlashBounty, endFlashBounty } from "../services/flash-bounty.js";
+import { getParticipantStats, sendStatsCard } from "../services/stats-card.js";
+import { captureError } from "../monitoring.js";
 
 const SYBIL_PRESETS = {
   off: { minAccountAgeDays: 0, requireWalletConnect: false, filterLevel: "off" as const },
@@ -40,7 +42,7 @@ async function getLeaderboardText(groupId: string): Promise<string> {
 
   const top = await prisma.campaignParticipant.findMany({
     where: { campaignId: campaign.id },
-    orderBy: { qualifiedReferrals: "desc" },
+    orderBy: [{ totalPoints: "desc" }, { qualifiedReferrals: "desc" }],
     take: 10,
   });
 
@@ -54,44 +56,6 @@ async function getLeaderboardText(groupId: string): Promise<string> {
   });
 
   return `🏆 *${campaign.name} — Top Referrers*\n\n${rows.join("\n")}`;
-}
-
-async function getStatsText(groupId: string, telegramUserId: string): Promise<string> {
-  const campaign = await getActiveCampaignForGroup(groupId);
-  if (!campaign) return "No active campaign.";
-
-  const participant = await prisma.campaignParticipant.findUnique({
-    where: { campaignId_telegramUserId: { campaignId: campaign.id, telegramUserId } },
-  });
-
-  if (!participant) return "You haven't participated yet. Get your invite link to join!";
-
-  const referrals = await prisma.referral.findMany({
-    where: { campaignId: campaign.id, referrerId: participant.id },
-    select: { status: true },
-  });
-
-  const counts = referrals.reduce((acc, r) => {
-    acc[r.status] = (acc[r.status] ?? 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const rank = await prisma.campaignParticipant.count({
-    where: {
-      campaignId: campaign.id,
-      qualifiedReferrals: { gt: participant.qualifiedReferrals },
-    },
-  });
-  const total = await prisma.campaignParticipant.count({ where: { campaignId: campaign.id } });
-
-  return (
-    `📊 *Your Stats — ${campaign.name}*\n\n` +
-    `✅ Qualified: ${counts["QUALIFIED"] ?? 0}\n` +
-    `⏳ Pending: ${(counts["PENDING"] ?? 0) + (counts["REGISTERED"] ?? 0)} unconfirmed\n` +
-    `❌ Rejected: ${counts["REJECTED"] ?? 0}\n` +
-    `🏆 Points: ${participant.totalPoints}\n` +
-    `📍 Rank: #${rank + 1} of ${total}`
-  );
 }
 
 async function getCampaignText(groupId: string): Promise<string> {
@@ -284,15 +248,13 @@ async function handleLeaderboard(ctx: Context, groupId: string) {
 }
 
 async function handleStats(ctx: Context, groupId: string) {
-  const userId = String(ctx.from!.id);
-  const text = await getStatsText(groupId, userId);
-  await ctx.editMessageText(text, {
-    parse_mode: "Markdown",
-    reply_markup: {
-      inline_keyboard: [[{ text: "← Back", callback_data: `g:menu:${groupId}` }]],
-    },
-  });
-  await ctx.answerCallbackQuery();
+  await ctx.answerCallbackQuery({ text: "📊 Generating your stats card…" });
+  const stats = await getParticipantStats(ctx.api, groupId, String(ctx.from!.id), ctx.me.username);
+  if (!stats.ok) {
+    await ctx.reply(stats.message);
+    return;
+  }
+  await sendStatsCard(ctx.api, ctx.chat!.id, stats);
 }
 
 async function handleCampaignInfo(ctx: Context, groupId: string) {
@@ -544,13 +506,21 @@ async function handlePortalStats(ctx: Context, bot: Bot) {
     return;
   }
 
-  const text = await getStatsText(group.id, String(from.id));
+  const stats = await getParticipantStats(bot.api, group.id, String(from.id), ctx.me.username);
+  if (!stats.ok) {
+    await ctx.answerCallbackQuery({ text: stats.message.slice(0, 200), show_alert: true });
+    return;
+  }
 
   try {
-    await bot.api.sendMessage(from.id, text, { parse_mode: "Markdown" });
-    await ctx.answerCallbackQuery({ text: "📊 Stats sent to your DMs!" });
+    await sendStatsCard(bot.api, from.id, stats);
+    await ctx.answerCallbackQuery({ text: "📊 Stats card sent to your DMs!" });
   } catch {
-    await ctx.answerCallbackQuery({ text: text.slice(0, 200), show_alert: true });
+    const c = stats.card;
+    await ctx.answerCallbackQuery({
+      text: `Rank #${c.rank} of ${c.totalParticipants} · ${c.points} pts · ${c.qualified} qualified.\nStart a chat with @${ctx.me.username} to get your full stats card.`,
+      show_alert: true,
+    });
   }
 }
 
@@ -681,7 +651,7 @@ export function registerCallbackHandler(bot: Bot) {
         await ctx.answerCallbackQuery({ text: "Unknown action." });
       }
     } catch (err) {
-      console.error("Callback error:", err);
+      captureError(err, { callbackData: data });
       try {
         await ctx.answerCallbackQuery({ text: "Something went wrong. Please try again." });
       } catch {}

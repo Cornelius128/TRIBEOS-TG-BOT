@@ -2,7 +2,8 @@ import type { NextConfig } from "next";
 
 const SECURITY_HEADERS = [
   { key: "X-DNS-Prefetch-Control", value: "on" },
-  { key: "X-Frame-Options", value: "SAMEORIGIN" },
+  // Telegram Web (web.telegram.org) embeds Mini Apps in an iframe, so X-Frame-Options would break them.
+  { key: "Content-Security-Policy", value: "frame-ancestors 'self' https://web.telegram.org" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },

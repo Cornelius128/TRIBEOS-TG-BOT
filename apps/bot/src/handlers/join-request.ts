@@ -1,5 +1,6 @@
 import { Bot } from "grammy";
 import { handleJoinRequest } from "../services/invite-links.js";
+import { captureError } from "../monitoring.js";
 
 export function registerJoinRequestHandler(bot: Bot): void {
   bot.on("chat_join_request", async (ctx) => {
@@ -18,7 +19,7 @@ export function registerJoinRequestHandler(bot: Bot): void {
         inviteLinkUrl
       );
     } catch (err) {
-      console.error("Error handling join request:", err);
+      captureError(err, { handler: "chat_join_request", chatId });
       // Default to approving on error to avoid blocking legitimate users
       try {
         await bot.api.approveChatJoinRequest(chatId, user.id);

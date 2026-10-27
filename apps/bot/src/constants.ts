@@ -14,4 +14,6 @@ export const BOT_COMMANDS = [
 export const REFERRAL_CODE_PREFIX = "ref_";
 export const REFERRAL_CODE_LENGTH = 12;
 
-export const DASHBOARD_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://tribeos.app";
+export const DASHBOARD_URL = (
+  process.env.DASHBOARD_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+).replace(/\/+$/, "");

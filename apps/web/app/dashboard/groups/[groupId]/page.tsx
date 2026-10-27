@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Plus, Users, Share2, Settings, Activity, Zap, Shield, ClipboardList } from "lucide-react";
+import { ArrowLeft, Plus, Users, Share2, Settings, Activity, Zap, Shield, ClipboardList, Trophy, Megaphone, Swords, Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -82,6 +82,26 @@ export default async function GroupPage({ params }: { params: Promise<{ groupId:
           )}
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/dashboard/groups/${groupId}/rewards`}>
+              <Trophy className="h-4 w-4" /> Rewards
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/dashboard/groups/${groupId}/announcements`}>
+              <Megaphone className="h-4 w-4" /> Announcements
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/dashboard/groups/${groupId}/teams`}>
+              <Swords className="h-4 w-4" /> Teams
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/dashboard/groups/${groupId}/quests`}>
+              <Star className="h-4 w-4" /> Quests
+            </Link>
+          </Button>
           <Button variant="outline" size="sm" asChild>
             <Link href={`/dashboard/groups/${groupId}/audit`}>
               <ClipboardList className="h-4 w-4" /> Audit

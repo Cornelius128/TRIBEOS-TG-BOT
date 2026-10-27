@@ -1,12 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 
 const BOT_USERNAME = process.env.NEXT_PUBLIC_BOT_USERNAME ?? "TribeOSBot";
 
+function Spinner({ label }: { label: string }) {
+  return (
+    <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center gap-4">
+      <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+      <p className="text-zinc-400 text-sm">{label}</p>
+    </div>
+  );
+}
+
 export default function TelegramAuthPage() {
+  return (
+    <Suspense fallback={<Spinner label="Loading…" />}>
+      <TelegramAuth />
+    </Suspense>
+  );
+}
+
+function TelegramAuth() {
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect") ?? "/dashboard";
   const [status, setStatus] = useState<"loading" | "signing-in" | "no-telegram" | "error">(
@@ -91,13 +108,5 @@ export default function TelegramAuthPage() {
     );
   }
 
-  // loading / signing-in
-  return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center gap-4">
-      <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
-      <p className="text-zinc-400 text-sm">
-        {status === "signing-in" ? "Signing you in…" : "Loading…"}
-      </p>
-    </div>
-  );
+  return <Spinner label={status === "signing-in" ? "Signing you in…" : "Loading…"} />;
 }

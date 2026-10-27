@@ -1,10 +1,13 @@
 import "dotenv/config";
-import { Bot, webhookCallback } from "grammy";
+import { captureError, flushErrors } from "./monitoring.js";
+import { Bot, webhookCallback, type Context } from "grammy";
+import { limit } from "@grammyjs/ratelimiter";
 import express from "express";
 import { prisma } from "./db.js";
 import { registerCommands } from "./commands/index.js";
 import { registerHandlers } from "./handlers/index.js";
 import { setupBotCommands } from "./setup.js";
+import { startExpirySweeper } from "./services/expiry.js";
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -12,23 +15,46 @@ if (!BOT_TOKEN) {
   process.exit(1);
 }
 
-const WEBHOOK_URL = process.env.WEBHOOK_URL;
+// On Railway the service's generated domain is injected as RAILWAY_PUBLIC_DOMAIN.
+const WEBHOOK_URL =
+  process.env.WEBHOOK_URL ??
+  (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : undefined);
 const WEBHOOK_SECRET = process.env.BOT_WEBHOOK_SECRET;
-const PORT = parseInt(process.env.BOT_PORT ?? "3001");
+const PORT = parseInt(process.env.PORT ?? process.env.BOT_PORT ?? "3001");
+
+if (WEBHOOK_URL && !WEBHOOK_SECRET) {
+  console.error("BOT_WEBHOOK_SECRET is required in webhook mode, otherwise anyone can post fake updates.");
+  process.exit(1);
+}
 
 export const bot = new Bot(BOT_TOKEN);
 
-// Register all commands and handlers
+// Per-user flood protection for DMs and button taps. Group messages are left alone so
+// the admin-only guard still deletes every unauthorized command.
+bot.filter(
+  (ctx) => ctx.chat?.type === "private" || !!ctx.callbackQuery,
+  limit<Context, never>({
+    timeFrame: 3000,
+    limit: 5,
+    keyGenerator: (ctx) => ctx.from?.id.toString(),
+    onLimitExceeded: async (ctx) => {
+      if (ctx.callbackQuery) {
+        await ctx.answerCallbackQuery({ text: "Slow down a little 🙂" }).catch(() => {});
+      }
+    },
+  })
+);
+
 registerCommands(bot);
 registerHandlers(bot);
 
-// Global error handler
 bot.catch((err) => {
-  console.error("Bot error:", err.error);
+  captureError(err.error, { updateId: err.ctx.update.update_id });
 });
 
 async function main() {
   await setupBotCommands(bot);
+  const sweeper = startExpirySweeper(bot);
 
   if (WEBHOOK_URL) {
     // Webhook mode (production)
@@ -73,7 +99,9 @@ async function main() {
   // Graceful shutdown
   const shutdown = async () => {
     console.log("Shutting down...");
+    clearInterval(sweeper);
     await prisma.$disconnect();
+    await flushErrors();
     if (!WEBHOOK_URL) {
       await bot.stop();
     }
@@ -84,7 +112,8 @@ async function main() {
   process.once("SIGTERM", shutdown);
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err);
+main().catch(async (err) => {
+  captureError(err, { fatal: true });
+  await flushErrors();
   process.exit(1);
 });

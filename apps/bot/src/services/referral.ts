@@ -1,5 +1,6 @@
 import { prisma } from "../db.js";
 import crypto from "crypto";
+import { getActiveFlashBounty } from "./flash-bounty.js";
 
 export function generateReferralCode(): string {
   const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
@@ -171,7 +172,7 @@ export async function qualifyReferral(
       where: { id: referrerId },
       data: {
         qualifiedReferrals: { increment: 1 },
-        pendingReferrals: { decrement: existing.status === "PENDING" ? 1 : 0 },
+        pendingReferrals: { decrement: ["REGISTERED", "PENDING"].includes(existing.status) ? 1 : 0 },
         totalPoints: { increment: points },
       },
     });
@@ -185,6 +186,46 @@ export async function qualifyReferral(
       },
     });
   });
+}
+
+async function checkAndCompleteQuests(
+  campaignId: string,
+  referrerId: string,
+  groupId: string
+) {
+  const referrer = await prisma.campaignParticipant.findUnique({ where: { id: referrerId } });
+  if (!referrer) return;
+
+  const quests = await prisma.quest.findMany({
+    where: {
+      groupId,
+      isActive: true,
+      type: { in: ["REFERRAL_COUNT", "POINTS_MILESTONE"] },
+      OR: [{ campaignId: null }, { campaignId }],
+      completions: { none: { participantId: referrerId } },
+    },
+  });
+
+  for (const quest of quests) {
+    const progress =
+      quest.type === "REFERRAL_COUNT"
+        ? referrer.qualifiedReferrals
+        : referrer.totalPoints;
+
+    if (progress >= quest.target) {
+      await prisma.$transaction(async (tx) => {
+        await tx.questCompletion.create({
+          data: { questId: quest.id, participantId: referrerId, pointsAwarded: quest.points },
+        });
+        if (quest.points > 0) {
+          await tx.campaignParticipant.update({
+            where: { id: referrerId },
+            data: { totalPoints: { increment: quest.points } },
+          });
+        }
+      });
+    }
+  }
 }
 
 export async function checkAndQualifyReferrals(
@@ -216,6 +257,10 @@ export async function checkAndQualifyReferrals(
     },
   });
 
+  const bounty = await getActiveFlashBounty(campaign.groupId, campaignId);
+  const points =
+    Math.round(campaign.pointsPerReferral * (bounty?.multiplier ?? 1)) + (bounty?.bonusPoints ?? 0);
+
   for (const referral of pendingReferrals) {
     let canQualify = true;
 
@@ -244,7 +289,8 @@ export async function checkAndQualifyReferrals(
     }
 
     if (canQualify) {
-      await qualifyReferral(referral.id, campaignId, referral.referrerId, campaign.pointsPerReferral);
+      await qualifyReferral(referral.id, campaignId, referral.referrerId, points);
+      await checkAndCompleteQuests(campaignId, referral.referrerId, campaign.groupId);
     }
   }
 }

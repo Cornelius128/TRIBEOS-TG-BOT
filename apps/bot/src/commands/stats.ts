@@ -1,66 +1,48 @@
 import type { Context } from "grammy";
 import { prisma } from "../db.js";
-import { getActiveCampaignForGroup } from "../services/referral.js";
+import { getParticipantStats, sendStatsCard } from "../services/stats-card.js";
 
 export async function handleStats(ctx: Context) {
   const from = ctx.from;
-  if (!from) return;
-
+  if (!from || !ctx.chat) return;
   const telegramUserId = String(from.id);
+  const botUsername = ctx.me.username;
 
-  let campaign = null;
-  if (ctx.chat?.type !== "private") {
-    const group = await prisma.telegramGroup.findUnique({
-      where: { telegramId: String(ctx.chat?.id) },
-    });
-    if (group) campaign = await getActiveCampaignForGroup(group.id);
-  }
-
-  if (!campaign) {
-    await ctx.reply("No active campaign.");
+  if (ctx.chat.type !== "private") {
+    const group = await prisma.telegramGroup.findUnique({ where: { telegramId: String(ctx.chat.id) } });
+    if (!group) return;
+    await ctx.replyWithChatAction("upload_photo").catch(() => {});
+    const stats = await getParticipantStats(ctx.api, group.id, telegramUserId, botUsername);
+    if (!stats.ok) {
+      await ctx.reply(stats.message, { reply_parameters: { message_id: ctx.msg!.message_id } });
+      return;
+    }
+    await sendStatsCard(ctx.api, ctx.chat.id, stats, ctx.msg?.message_id);
     return;
   }
 
-  const participant = await prisma.campaignParticipant.findUnique({
-    where: { campaignId_telegramUserId: { campaignId: campaign.id, telegramUserId } },
-  });
-
-  if (!participant) {
-    await ctx.reply("You haven't participated yet. Use /referral to get your link.");
-    return;
-  }
-
-  const referrals = await prisma.referral.findMany({
-    where: { campaignId: campaign.id, referrerId: participant.id },
-    select: { status: true },
-  });
-
-  const counts = referrals.reduce(
-    (acc, r) => {
-      acc[r.status] = (acc[r.status] ?? 0) + 1;
-      return acc;
-    },
-    {} as Record<string, number>
-  );
-
-  const totalParticipants = await prisma.campaignParticipant.count({
-    where: { campaignId: campaign.id, qualifiedReferrals: { gt: 0 } },
-  });
-
-  const rank = await prisma.campaignParticipant.count({
+  // In DMs there is no group context: show a card for each active campaign the user is in.
+  const now = new Date();
+  const memberships = await prisma.campaignParticipant.findMany({
     where: {
-      campaignId: campaign.id,
-      qualifiedReferrals: { gt: participant.qualifiedReferrals },
+      telegramUserId,
+      campaign: { status: "ACTIVE", startAt: { lte: now }, endAt: { gte: now } },
     },
+    include: { campaign: { select: { groupId: true } } },
+    orderBy: { totalPoints: "desc" },
+    take: 3,
   });
 
-  await ctx.reply(
-    `📊 **Your Stats — ${campaign.name}**\n\n` +
-    `✅ Qualified: ${counts["QUALIFIED"] ?? 0}\n` +
-    `⏳ Pending: ${counts["PENDING"] ?? 0} + ${counts["REGISTERED"] ?? 0} unconfirmed\n` +
-    `❌ Rejected: ${counts["REJECTED"] ?? 0}\n` +
-    `🏆 Points: ${participant.totalPoints}\n` +
-    `📍 Rank: #${rank + 1} of ${totalParticipants}`,
-    { parse_mode: "Markdown" }
-  );
+  if (memberships.length === 0) {
+    await ctx.reply(
+      "You're not in any active campaign yet.\n\nOpen a community's invite link, or tap 📋 My Communities to get your own."
+    );
+    return;
+  }
+
+  await ctx.replyWithChatAction("upload_photo").catch(() => {});
+  for (const m of memberships) {
+    const stats = await getParticipantStats(ctx.api, m.campaign.groupId, telegramUserId, botUsername);
+    if (stats.ok) await sendStatsCard(ctx.api, ctx.chat.id, stats);
+  }
 }
