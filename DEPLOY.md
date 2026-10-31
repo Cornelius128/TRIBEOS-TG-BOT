@@ -56,6 +56,8 @@ railway variable set BOT_TOKEN --stdin --service bot --skip-deploys
 railway variable set BOT_USERNAME=YourBotUsername --service bot --skip-deploys
 ```
 
+> **Note on Telegram Group Privacy:** In [@BotFather](https://t.me/BotFather), you can run `/setprivacy` -> select your bot -> select **Disable** so the bot can read `/verify` commands even without the `@botname` suffix.
+
 Webhook secret — must be hex: Telegram only allows `A-Z a-z 0-9 _ -` in it.
 
 ```bash

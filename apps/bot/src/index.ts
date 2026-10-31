@@ -1,3 +1,4 @@
+// TribeOS Telegram Bot service entry point
 import "dotenv/config";
 import crypto from "crypto";
 import { captureError, flushErrors } from "./monitoring.js";
