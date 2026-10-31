@@ -18,6 +18,13 @@ export const BOT_COMMANDS = [
 export const REFERRAL_CODE_PREFIX = "ref_";
 export const REFERRAL_CODE_LENGTH = 12;
 
-export const DASHBOARD_URL = (
-  process.env.DASHBOARD_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+const rawDashboardUrl = (
+  process.env.DASHBOARD_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://jayonchain.tech"
 ).replace(/\/+$/, "");
+
+// Guard: The Express bot service runs on app.jayonchain.tech while the Next.js web dashboard
+// runs on jayonchain.tech. If DASHBOARD_URL is accidentally set to the bot's own subdomain, correct it.
+export const DASHBOARD_URL =
+  rawDashboardUrl === "https://app.jayonchain.tech" || rawDashboardUrl === "http://app.jayonchain.tech"
+    ? "https://jayonchain.tech"
+    : rawDashboardUrl;

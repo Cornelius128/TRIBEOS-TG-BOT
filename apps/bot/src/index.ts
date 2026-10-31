@@ -10,6 +10,7 @@ import { registerCommands } from "./commands/index.js";
 import { registerHandlers } from "./handlers/index.js";
 import { setupBotCommands } from "./setup.js";
 import { startExpirySweeper } from "./services/expiry.js";
+import { DASHBOARD_URL } from "./constants.js";
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -75,6 +76,13 @@ async function main() {
     });
 
     app.post(`/webhook/${WEBHOOK_SECRET ?? "webhook"}`, handleUpdate);
+
+    // Fallback: If any GET request arrives for dashboard / auth routes (e.g. /auth/telegram, /dashboard, etc.),
+    // redirect to the web dashboard instead of throwing Express "Cannot GET /..."
+    app.get("*", (req, res) => {
+      const target = new URL(req.originalUrl, DASHBOARD_URL);
+      res.redirect(302, target.toString());
+    });
 
     app.listen(PORT, () => {
       console.log(`Bot webhook server listening on port ${PORT}`);
