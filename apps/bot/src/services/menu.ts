@@ -5,11 +5,18 @@ import { DASHBOARD_URL } from "../constants.js";
 // ─── Main DM Menu ─────────────────────────────────────────────────────────────
 
 export function mainMenuKeyboard(): InlineKeyboard {
-  return new InlineKeyboard()
-    .text("📋 My Communities", "m:groups")
+  const isHttps = DASHBOARD_URL.startsWith("https://");
+  const kb = new InlineKeyboard();
+  if (isHttps) {
+    kb.webApp("🖥️ Open Dashboard", `${DASHBOARD_URL}/auth/telegram`).row();
+  } else {
+    kb.url("🖥️ Open Dashboard", `${DASHBOARD_URL}/auth/telegram`).row();
+  }
+  kb.text("📋 My Communities", "m:groups")
     .row()
     .text("❓ Help", "m:help")
     .text("🔗 About", "m:about");
+  return kb;
 }
 
 // ─── Groups List ──────────────────────────────────────────────────────────────
@@ -22,8 +29,15 @@ export async function groupsListKeyboard(telegramUserId: string): Promise<Inline
   });
 
   const kb = new InlineKeyboard();
+  const isHttps = DASHBOARD_URL.startsWith("https://");
+  const newGroupUrl = `${DASHBOARD_URL}/auth/telegram?redirect=/dashboard/groups/new`;
 
   if (admins.length === 0) {
+    if (isHttps) {
+      kb.webApp("➕ Link a Community", newGroupUrl).row();
+    } else {
+      kb.url("➕ Link a Community", newGroupUrl).row();
+    }
     kb.text("📖 How to link a group", "m:howto");
   } else {
     for (const admin of admins) {
@@ -32,6 +46,9 @@ export async function groupsListKeyboard(telegramUserId: string): Promise<Inline
         ? admin.group.title.slice(0, 25) + "…"
         : admin.group.title;
       kb.text(`${icon} ${title}`, `g:menu:${admin.groupId}`).row();
+    }
+    if (isHttps) {
+      kb.webApp("➕ Link Another Community", newGroupUrl).row();
     }
   }
 
@@ -125,7 +142,12 @@ export function portalKeyboard(): InlineKeyboard {
 // ─── Persistent Reply Keyboard (below text input, DM only) ───────────────────
 
 export function persistentKeyboard(): Keyboard {
-  return new Keyboard()
+  const isHttps = DASHBOARD_URL.startsWith("https://");
+  const kb = new Keyboard();
+  if (isHttps) {
+    kb.webApp("🖥️ Open Dashboard", `${DASHBOARD_URL}/auth/telegram`).row();
+  }
+  return kb
     .text("📋 My Communities")
     .text("❓ Help")
     .resized()

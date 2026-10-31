@@ -176,16 +176,27 @@ async function handleAbout(ctx: Context) {
 }
 
 async function handleHowTo(ctx: Context) {
+  const isHttps = DASHBOARD_URL.startsWith("https://");
+  const linkUrl = `${DASHBOARD_URL}/auth/telegram?redirect=/dashboard/groups/new`;
+  const actionButton = isHttps
+    ? { text: "🖥️ Open Dashboard to Link Group", web_app: { url: linkUrl } }
+    : { text: "🖥️ Open Dashboard to Link Group", url: linkUrl };
+
   await ctx.editMessageText(
     "📖 *How to link your community:*\n\n" +
-    "1️⃣ Add *@TribeOSBot* to your Telegram group as an *Admin*\n" +
+    "1️⃣ Add the bot to your Telegram group as an *Admin*\n" +
     "2️⃣ Make sure the bot has permission to *invite users*\n" +
-    `3️⃣ Visit [${DASHBOARD_URL}](${DASHBOARD_URL}) and sign in\n` +
-    "4️⃣ Click *Add Community* and follow the linking steps\n" +
+    "3️⃣ Tap *Open Dashboard* below to generate your link challenge\n" +
+    "4️⃣ Send `/verify_<code>@tribeosbot` in your group\n" +
     "5️⃣ Run /portal in your group to pin the action board",
     {
       parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: [[{ text: "← Back", callback_data: "m:groups" }]] },
+      reply_markup: {
+        inline_keyboard: [
+          [actionButton],
+          [{ text: "← Back", callback_data: "m:groups" }],
+        ],
+      },
     }
   );
   await ctx.answerCallbackQuery();

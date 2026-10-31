@@ -5,13 +5,18 @@ import { Plus, Users, Settings, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
+import { redirect } from "next/navigation";
+
 export const metadata = { title: "Communities" };
 
 export const instant = false;
 
 export default async function GroupsPage() {
   const session = await auth();
-  const userId = session!.user!.id as string;
+  if (!session?.user?.id) {
+    redirect("/auth/telegram");
+  }
+  const userId = session.user.id;
 
   const groupAdmins = await prisma.groupAdmin.findMany({
     where: { userId },

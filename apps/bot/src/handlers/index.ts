@@ -13,8 +13,17 @@ export function registerHandlers(bot: Bot) {
   bot.on("chat_member", (ctx) => handleChatMemberUpdate(ctx, bot));
   bot.on("my_chat_member", (ctx) => handleChatMemberUpdate(ctx, bot));
 
-  // Handle verify challenge command in groups
-  bot.hears(/^\/verify_([A-Za-z0-9_-]+)/, handleVerifyChallenge);
+  // Handle verify challenge command in groups (supports /verify_<code>, /verify <code>, with or without @botusername)
+  bot.hears(/^\/verify(?:_| )([A-Za-z0-9_-]+)(?:@\w+)?/i, handleVerifyChallenge);
+  bot.command("verify", async (ctx) => {
+    if (ctx.chat?.type === "private") {
+      await ctx.reply("ℹ️ To link a group, open the dashboard at /dashboard or generate a verification code.");
+      return;
+    }
+    await ctx.reply("ℹ️ To link this community, send: `/verify_<code>@tribeosbot` with the code from your TribeOS dashboard.", {
+      parse_mode: "Markdown",
+    });
+  });
 
   // Welcome new members (if welcome module enabled)
   bot.on("chat_member", handleWelcome);

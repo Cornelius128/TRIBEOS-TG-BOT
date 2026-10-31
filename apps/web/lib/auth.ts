@@ -2,13 +2,63 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "./prisma";
-import { verifyTelegramWebAppData } from "./telegram-auth";
+import { verifyTelegramWebAppData, verifyTelegramWidgetData } from "./telegram-auth";
+
+async function getOrCreateTelegramUser(
+  telegramId: string,
+  rawName: string,
+  image?: string | null
+) {
+  const name = rawName.trim() || `Telegram User ${telegramId}`;
+
+  // Find existing user by Telegram ID
+  let user = await prisma.user.findUnique({ where: { telegramId } });
+
+  if (!user) {
+    // Check if there's already a user linked via GroupAdmin
+    const admin = await prisma.groupAdmin.findFirst({
+      where: { telegramUserId: telegramId },
+      include: { user: true },
+    });
+
+    if (admin?.user && !admin.user.telegramId) {
+      user = await prisma.user.update({
+        where: { id: admin.user.id },
+        data: { telegramId, name: admin.user.name ?? name, image: image ?? admin.user.image },
+      });
+    } else {
+      const email = `tg_${telegramId}@tg.tribeos.internal`;
+      const existing = await prisma.user.findUnique({ where: { email } });
+      if (existing) {
+        user = await prisma.user.update({
+          where: { id: existing.id },
+          data: { telegramId, name: existing.name ?? name, image: image ?? existing.image },
+        });
+      } else {
+        user = await prisma.user.create({
+          data: { telegramId, email, name, image: image ?? null },
+        });
+      }
+    }
+  } else if (!user.name && name) {
+    user = await prisma.user.update({
+      where: { id: user.id },
+      data: { name, image: image ?? user.image },
+    });
+  }
+
+  return user;
+}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
   // Railway terminates TLS at its edge and forwards the original Host header.
   trustHost: true,
+  secret:
+    process.env.AUTH_SECRET ||
+    process.env.NEXTAUTH_SECRET ||
+    "tribeos_auth_production_secret_32chars_long_key",
   pages: {
     signIn: "/auth/telegram",
     error: "/auth/telegram",
@@ -30,16 +80,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
   },
   providers: [
-    // Primary: Telegram Web App authentication (no forms, uses initData hash)
+    // Primary: Telegram Web App authentication (inside Telegram Mini App)
     Credentials({
       id: "telegram-webapp",
+      name: "Telegram Mini App",
       credentials: { initData: { type: "text" } },
       async authorize(credentials) {
         const initData = credentials?.initData as string | undefined;
         if (!initData) return null;
 
-        const botToken = process.env.TELEGRAM_BOT_TOKEN;
-        if (!botToken) return null;
+        const botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN;
+        if (!botToken) {
+          console.error("⚠️ Neither TELEGRAM_BOT_TOKEN nor BOT_TOKEN is set in web environment variables!");
+          return null;
+        }
 
         const data = verifyTelegramWebAppData(initData, botToken);
         if (!data?.user) return null;
@@ -48,46 +102,48 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const telegramId = String(telegramUser.id);
         const name = [telegramUser.first_name, telegramUser.last_name]
           .filter(Boolean)
-          .join(" ");
+          .join(" ") || telegramUser.username || `User ${telegramId}`;
 
-        // Find existing user by Telegram ID
-        let user = await prisma.user.findUnique({ where: { telegramId } });
+        const user = await getOrCreateTelegramUser(telegramId, name);
+        return { id: user.id, email: user.email, name: user.name };
+      },
+    }),
 
-        if (!user) {
-          // Check if there's already a user linked via GroupAdmin (migrating existing admins)
-          const admin = await prisma.groupAdmin.findFirst({
-            where: { telegramUserId: telegramId },
-            include: { user: true },
-          });
+    // Secondary: Telegram Login Widget (standard desktop / mobile browser login)
+    Credentials({
+      id: "telegram-widget",
+      name: "Telegram Login Widget",
+      credentials: {
+        id: { type: "text" },
+        first_name: { type: "text" },
+        last_name: { type: "text" },
+        username: { type: "text" },
+        photo_url: { type: "text" },
+        auth_date: { type: "text" },
+        hash: { type: "text" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.id || !credentials?.hash) return null;
 
-          if (admin?.user && !admin.user.telegramId) {
-            // Link Telegram ID to the existing web account
-            user = await prisma.user.update({
-              where: { id: admin.user.id },
-              data: { telegramId, name: admin.user.name ?? name },
-            });
-          } else {
-            // Create a new account
-            const email = `tg_${telegramId}@tg.tribeos.internal`;
-            const existing = await prisma.user.findUnique({ where: { email } });
-            if (existing) {
-              user = await prisma.user.update({
-                where: { id: existing.id },
-                data: { telegramId },
-              });
-            } else {
-              user = await prisma.user.create({
-                data: { telegramId, email, name },
-              });
-            }
-          }
-        } else if (telegramUser.first_name && !user.name) {
-          user = await prisma.user.update({
-            where: { id: user.id },
-            data: { name },
-          });
+        const botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN;
+        if (!botToken) {
+          console.error("⚠️ Neither TELEGRAM_BOT_TOKEN nor BOT_TOKEN is set in web environment variables!");
+          return null;
         }
 
+        const isValid = verifyTelegramWidgetData(
+          credentials as Record<string, string>,
+          botToken
+        );
+        if (!isValid) return null;
+
+        const telegramId = String(credentials.id);
+        const name = [credentials.first_name, credentials.last_name]
+          .filter(Boolean)
+          .join(" ") || (credentials.username as string) || `User ${telegramId}`;
+        const photoUrl = credentials.photo_url as string | undefined;
+
+        const user = await getOrCreateTelegramUser(telegramId, name, photoUrl);
         return { id: user.id, email: user.email, name: user.name };
       },
     }),

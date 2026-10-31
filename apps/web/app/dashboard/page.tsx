@@ -7,13 +7,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 
+import { redirect } from "next/navigation";
+
 export const metadata = { title: "Dashboard" };
 
 export const instant = false;
 
 export default async function DashboardPage() {
   const session = await auth();
-  const userId = session!.user!.id as string;
+  if (!session?.user?.id) {
+    redirect("/auth/telegram");
+  }
+  const userId = session.user.id;
 
   const groupAdmins = await prisma.groupAdmin.findMany({
     where: { userId },
@@ -63,7 +68,7 @@ export default async function DashboardPage() {
     <div className="p-8">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-white">
-          Welcome back, {session!.user!.name?.split(" ")[0] ?? "there"}
+          Welcome back, {session.user.name?.split(" ")[0] ?? "there"}
         </h1>
         <p className="text-zinc-400 mt-1">
           Here&apos;s what&apos;s happening across your communities.

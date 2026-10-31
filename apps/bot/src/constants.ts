@@ -1,6 +1,8 @@
 export const BOT_COMMANDS = [
   { command: "start", description: "Open the main menu" },
+  { command: "dashboard", description: "Open TribeOS web dashboard" },
   { command: "help", description: "Show available commands" },
+  { command: "link", description: "Link a Telegram group" },
   { command: "referral", description: "Get your invite link" },
   { command: "myreferrals", description: "View your referral stats" },
   { command: "leaderboard", description: "View campaign leaderboard" },

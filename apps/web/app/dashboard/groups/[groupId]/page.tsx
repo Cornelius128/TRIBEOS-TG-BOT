@@ -19,7 +19,10 @@ export const instant = false;
 export default async function GroupPage({ params }: { params: Promise<{ groupId: string }> }) {
   const { groupId } = await params;
   const session = await auth();
-  const userId = session!.user!.id as string;
+  if (!session?.user?.id) {
+    redirect("/auth/telegram");
+  }
+  const userId = session.user.id;
 
   const admin = await prisma.groupAdmin.findUnique({
     where: { groupId_userId: { groupId, userId } },

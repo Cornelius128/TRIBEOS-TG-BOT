@@ -11,7 +11,7 @@ import { checkAndAlertPoachables } from "../services/poaching.js";
 import { incrementFlashBountyCount } from "../services/flash-bounty.js";
 
 export async function handleChatMemberUpdate(ctx: Context, bot: Bot) {
-  const update = ctx.chatMember;
+  const update = ctx.chatMember ?? ctx.myChatMember;
   if (!update) return;
 
   const chatId = String(ctx.chat?.id);

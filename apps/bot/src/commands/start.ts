@@ -6,25 +6,48 @@ import {
   getOrCreateReferralCode,
   recordReferral,
 } from "../services/referral.js";
-import { persistentKeyboard } from "../services/menu.js";
+import { persistentKeyboard, mainMenuKeyboard } from "../services/menu.js";
+import { verifyGroupWithCode } from "../handlers/verify.js";
 
 export async function handleStart(ctx: Context) {
   const from = ctx.from;
-  if (!from) return;
+  const chat = ctx.chat;
+  if (!from || !chat) return;
 
   const telegramUserId = String(from.id);
   const telegramUsername = from.username;
   const telegramName = [from.first_name, from.last_name].filter(Boolean).join(" ");
   const botUsername = ctx.me.username;
 
-  // Extract referral code from deep link
-  const startParam = ctx.match as string | undefined;
+  // Extract parameter from deep link
+  const startParam = typeof ctx.match === "string" ? ctx.match.trim() : undefined;
+
+  // ── Handle group-level start (e.g. from ?startgroup=verify_code) ─────────
+  if (chat.type !== "private") {
+    if (startParam && startParam.startsWith("verify_")) {
+      const code = startParam.replace(/^verify_/, "").trim();
+      const result = await verifyGroupWithCode(
+        {
+          id: chat.id,
+          title: chat.title,
+          type: chat.type,
+          username: "username" in chat ? (chat.username ?? null) : null,
+        },
+        from,
+        code,
+        ctx.api
+      );
+      if (result.message) {
+        await ctx.reply(result.message, { parse_mode: "HTML" });
+      }
+    }
+    return;
+  }
+
   let referralCode: string | null = null;
   if (startParam && startParam.startsWith("ref_")) {
     referralCode = startParam;
   }
-
-  if (ctx.chat?.type !== "private") return;
 
   // ── Handle referral deep link ──────────────────────────────────────────────
 

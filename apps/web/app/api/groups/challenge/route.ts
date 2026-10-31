@@ -24,12 +24,19 @@ export async function POST(req: NextRequest) {
     data: { code, userId, expiresAt },
   });
 
-  const botUsername = process.env.BOT_USERNAME || "TribeOSBot";
+  const botUsername =
+    process.env.NEXT_PUBLIC_BOT_USERNAME ||
+    process.env.BOT_USERNAME ||
+    "tribeosbot";
+
+  const command = `/verify_${challenge.code}@${botUsername}`;
 
   return NextResponse.json({
     code: challenge.code,
     expiresAt: challenge.expiresAt,
-    instruction: `Send this command in your Telegram group:\n/verify_${challenge.code}\n\nThe bot must be an admin of the group.`,
-    botLink: `https://t.me/${botUsername}`,
+    botUsername,
+    command,
+    instruction: `Send this command in your Telegram group:\n${command}\n\nThe bot must be an admin of the group.`,
+    botLink: `https://t.me/${botUsername}?startgroup=verify_${challenge.code}&admin=post_messages+invite_users+delete_messages`,
   });
 }

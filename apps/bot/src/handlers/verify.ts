@@ -1,18 +1,20 @@
-import type { Context } from "grammy";
+import type { Context, Api } from "grammy";
 import { prisma } from "../db.js";
 
-export async function handleVerifyChallenge(ctx: Context) {
-  // Only in groups
-  if (ctx.chat?.type === "private") return;
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
 
-  const from = ctx.from;
-  if (!from) return;
-
-  const match = ctx.match as RegExpMatchArray | null;
-  const code = match?.[1];
-  if (!code) return;
-
-  const chatId = String(ctx.chat?.id);
+export async function verifyGroupWithCode(
+  chat: { id: number; title?: string; type: string; username?: string | null },
+  from: { id: number; first_name?: string; username?: string },
+  code: string,
+  api: Api
+): Promise<{ success: boolean; message?: string }> {
+  const chatId = String(chat.id);
 
   // Find the challenge
   const challenge = await prisma.groupLinkChallenge.findUnique({
@@ -20,53 +22,60 @@ export async function handleVerifyChallenge(ctx: Context) {
   });
 
   if (!challenge) {
-    await ctx.reply("❌ Invalid verification code.");
-    return;
+    return { success: false, message: "❌ Invalid verification code. Please generate a new one from the dashboard." };
   }
 
   if (challenge.usedAt) {
-    await ctx.reply("This verification code has already been used.");
-    return;
+    return { success: false, message: "⚠️ This verification code has already been used." };
   }
 
   if (challenge.expiresAt < new Date()) {
-    await ctx.reply("❌ This verification code has expired. Please generate a new one from the dashboard.");
-    return;
+    return { success: false, message: "❌ This verification code has expired. Please generate a new one from the dashboard." };
   }
 
-  // Verify the sender is actually an admin
-  const chatMember = await ctx.api.getChatMember(ctx.chat!.id, from.id);
-  const isAdmin = ["administrator", "creator"].includes(chatMember.status);
-
-  if (!isAdmin) {
-    await ctx.reply("❌ You must be an administrator of this group to link it.");
-    return;
+  // Verify the sender is an administrator or group creator
+  try {
+    const senderMember = await api.getChatMember(chat.id, from.id);
+    const isSenderAdmin = ["administrator", "creator"].includes(senderMember.status);
+    if (!isSenderAdmin) {
+      return { success: false, message: "❌ You must be an administrator or owner of this group to link it." };
+    }
+  } catch (err) {
+    console.warn("Could not verify sender admin status:", err);
+    return {
+      success: false,
+      message: "⚠️ Could not verify administrator permissions. Please ensure the bot is added as an administrator.",
+    };
   }
 
-  // Get or create the TelegramGroup record
-  const chat = ctx.chat!;
-  const chatInfo = await ctx.api.getChat(chat.id);
-  const memberCount = "members_count" in chatInfo ? (chatInfo.members_count as number) : null;
+  // Get member count
+  let memberCount: number | null = null;
+  try {
+    memberCount = await api.getChatMemberCount(chat.id);
+  } catch {
+    // Ignore if not available
+  }
 
+  // Upsert the TelegramGroup record
   const group = await prisma.telegramGroup.upsert({
     where: { telegramId: chatId },
     update: {
       title: chat.title ?? "Unknown Group",
-      username: "username" in chat ? (chat.username ?? null) : null,
+      username: chat.username ?? null,
       botIsAdmin: true,
       memberCount: memberCount ?? undefined,
     },
     create: {
       telegramId: chatId,
       title: chat.title ?? "Unknown Group",
-      username: "username" in chat ? (chat.username ?? null) : null,
+      username: chat.username ?? null,
       type: chat.type,
       botIsAdmin: true,
       memberCount: memberCount ?? undefined,
     },
   });
 
-  // Mark challenge as used and associate with group
+  // Mark challenge as used and link group
   await prisma.groupLinkChallenge.update({
     where: { code },
     data: {
@@ -75,7 +84,7 @@ export async function handleVerifyChallenge(ctx: Context) {
     },
   });
 
-  // Create admin record for the user who ran the challenge
+  // Create or update admin record for dashboard user
   await prisma.groupAdmin.upsert({
     where: { groupId_userId: { groupId: group.id, userId: challenge.userId } },
     update: { role: "OWNER", telegramUserId: String(from.id) },
@@ -87,6 +96,12 @@ export async function handleVerifyChallenge(ctx: Context) {
     },
   });
 
+  // Update user's telegramId if not set
+  await prisma.user.updateMany({
+    where: { id: challenge.userId, telegramId: null },
+    data: { telegramId: String(from.id) },
+  }).catch(() => {});
+
   // Audit log
   await prisma.auditLog.create({
     data: {
@@ -96,11 +111,49 @@ export async function handleVerifyChallenge(ctx: Context) {
       description: `Group "${group.title}" linked via challenge verification`,
       metadata: { telegramGroupId: chatId, verifiedBy: from.id },
     },
-  });
+  }).catch(() => {});
 
-  await ctx.reply(
-    `✅ **${group.title}** has been successfully linked to TribeOS!\n\n` +
-    `You can now configure modules and campaigns from the dashboard.`,
-    { parse_mode: "Markdown" }
-  );
+  const safeTitle = escapeHtml(group.title);
+  return {
+    success: true,
+    message:
+      `✅ <b>${safeTitle}</b> has been successfully linked to TribeOS!\n\n` +
+      `You can now configure modules, campaigns, and invite tracking from your dashboard.`,
+  };
+}
+
+export async function handleVerifyChallenge(ctx: Context) {
+  // Only in groups
+  if (ctx.chat?.type === "private") return;
+
+  const from = ctx.from;
+  const chat = ctx.chat;
+  if (!from || !chat) return;
+
+  const match = ctx.match as RegExpMatchArray | null;
+  const code = match?.[1];
+  if (!code) return;
+
+  try {
+    const result = await verifyGroupWithCode(
+      {
+        id: chat.id,
+        title: chat.title,
+        type: chat.type,
+        username: "username" in chat ? (chat.username ?? null) : null,
+      },
+      from,
+      code,
+      ctx.api
+    );
+
+    if (result.message) {
+      await ctx.reply(result.message, { parse_mode: "HTML" });
+    }
+  } catch (err) {
+    console.error("Error in handleVerifyChallenge:", err);
+    await ctx.reply(
+      "❌ An unexpected error occurred while verifying the group. Please check that the bot has administrator rights and try again."
+    );
+  }
 }

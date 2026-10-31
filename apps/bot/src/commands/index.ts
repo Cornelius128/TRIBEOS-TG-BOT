@@ -16,6 +16,25 @@ import { groupsListKeyboard, mainMenuKeyboard } from "../services/menu.js";
 export function registerCommands(bot: Bot) {
   bot.command("start", handleStart);
   bot.command("menu", handleStart);
+  bot.command(["dashboard", "app"], async (ctx) => {
+    await ctx.reply("🖥️ *TribeOS Dashboard*\n\nTap below to open the dashboard Mini App or visit the web platform:", {
+      parse_mode: "Markdown",
+      reply_markup: mainMenuKeyboard(),
+    });
+  });
+  bot.command("link", async (ctx) => {
+    if (ctx.chat?.type !== "private") {
+      await ctx.reply("ℹ️ To link this community, run `/verify_<code>@tribeosbot` with the code from your TribeOS dashboard.", {
+        parse_mode: "Markdown",
+      });
+      return;
+    }
+    const kb = await groupsListKeyboard(String(ctx.from?.id));
+    await ctx.reply("➕ *Link a Community*\n\nSelect an option below to connect your group:", {
+      parse_mode: "Markdown",
+      reply_markup: kb,
+    });
+  });
   bot.command("help", handleHelp);
   bot.command("referral", handleReferral);
   bot.command("myreferrals", handleStats);

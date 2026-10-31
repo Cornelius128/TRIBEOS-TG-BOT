@@ -4,7 +4,7 @@ import { clientIp, rateLimit } from "@/lib/rate-limit";
 
 // First matching prefix wins.
 const API_LIMITS = [
-  { prefix: "/api/auth/callback", limit: 10, windowMs: 60_000 },
+  { prefix: "/api/auth/callback", limit: 30, windowMs: 60_000 },
   { prefix: "/api/groups/challenge", limit: 5, windowMs: 10 * 60_000 },
   { prefix: "/api/auth/record-fingerprint", limit: 10, windowMs: 60_000 },
   { prefix: "/api/health", limit: 60, windowMs: 60_000 },
